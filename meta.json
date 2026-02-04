@@ -1,0 +1,71 @@
+{
+   "bot_type": "replicator_b",
+   "bounding_box": {
+      "x_min": -120.17745971679688,
+      "x_max": 96.1070556640625,
+      "y_min": -65.67993188437597,
+      "y_max": 86.320050426083,
+      "z_min": -0.0004999878983085182,
+      "z_max": 126.0
+   },
+   "platform_temperature": 60.0,
+   "build_plane_temperature": 40,
+   "commanded_duration_s": 135174,
+   "duration_s": 135174,
+   "extrusion_distance_mm": 180470.0,
+   "extrusion_distances_mm": [
+      180470.0
+   ],
+   "extrusion_mass_g": 538.2573012500001,
+   "extrusion_masses_g": [
+      538.2573012500001
+   ],
+   "uuid": "81e03b0b-f8d5-4013-9321-c50d4daaef1f",
+   "material": "im-pla",
+   "materials": [
+      "im-pla"
+   ],
+   "extruder_temperature": 180,
+   "extruder_temperatures": [
+      180
+   ],
+   "model_counts": [
+      {
+         "count": 5,
+         "name": "instance0"
+      }
+   ],
+   "tool_type": "mk13_impla",
+   "tool_types": [
+      "mk13_impla"
+   ],
+   "version": "3.0.0",
+   "preferences": {
+      "instance0": {
+         "machineBounds": [
+            147.5,
+            97.5,
+            -147.5,
+            -97.5
+         ],
+         "printMode": "default"
+      }
+   },
+   "miracle_config": {
+      "gaggles": {
+         "instance0": {}
+      },
+      "curaengine_version": "5.11.0",
+      "curaengine_commit_hash": "c5f5c9a851ed6d10910932b52b1c2c6b",
+      "dulcificum_version": "5.10.0",
+      "dulcificum_commit_hash": "d7796f570134346c8cf8a45b2b677d63",
+      "makerbot_writer_version": "0.1.0",
+      "pyDulcificum_version": "5.10.0"
+   },
+   "curaengine_version": "5.11.0",
+   "curaengine_commit_hash": "c5f5c9a851ed6d10910932b52b1c2c6b",
+   "dulcificum_version": "5.10.0",
+   "dulcificum_commit_hash": "d7796f570134346c8cf8a45b2b677d63",
+   "makerbot_writer_version": "0.1.0",
+   "pyDulcificum_version": "5.10.0"
+}
