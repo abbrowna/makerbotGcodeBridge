@@ -1,0 +1,174 @@
+✅ FOUND (11 methods that returned a result):
+------------------------------------------------------------
+
+  handshake:
+    {
+      "machine_type": "horseshoe",
+      "vid": 9153,
+      "ip": "172.16.11.4",
+      "pid": 11,
+      "api_version": "1.9.0",
+      "iserial": "23C1000B3C70590298B1",
+      "firmware_version": {
+        "major": 2,
+        "minor": 6,
+        "bugfix": 3,
+        "build": 736
+      },
+      "ssl_port": "12309",
+      "machine_name": "T3_1",
+      "motor_driver_version": "4.6",
+      "bot_type": "replicator_b",
+      "port": "9999"
+    }
+
+  ping:
+    true
+
+  get_system_information:
+    {
+      "machine_type": "horseshoe",
+      "toolheads": {
+        "extruder": [
+          {
+            "current_temperature": 24,
+            "tool_id": 16,
+            "tool_present": true,
+            "index": 0,
+            "error": 0,
+            "target_temperature": 0,
+            "filament_presence": true,
+            "preheating": false
+          }
+        ]
+      },
+      "ip": "172.16.11.4",
+      "has_been_connected_to": false,
+      "api_version": "1.9.0",
+      "firmware_version": {
+        "major": 2,
+        "minor": 6,
+        "bugfix": 3,
+        "build": 736
+      },
+      "
+      ... (truncated)
+
+  get_machine_config:
+    {
+      "acceleration": {
+        "buffer_size": 200,
+        "split_move_recursion_count": 8,
+        "min_speed_change_mm_per_s": {
+          "y": 0.01,
+          "x": 0.01,
+          "z": 0
+        },
+        "impulse_speed_limit_mm_per_s": {
+          "y": 100,
+          "x": 100,
+          "z": 0
+        },
+        "rate_mm_per_s_sq": {
+          "y": 800,
+          "x": 800,
+          "z": 150
+        },
+        "split_move_distance_mm": 1.375,
+        "max_speed_change_mm_per_s": {
+          "y": 25,
+          "x": 25,
+          "z": 0
+        }
+      },
+      "bot_type": "replicator_b",
+      
+      ... (truncated)
+
+  get_config:
+    {
+      "extra_slicer_settings": {
+        "plate_variability": 0.0
+      },
+      "buffer_stall_error_threshold_ticks": 64285714,
+      "linear_density": 0.0031,
+      "toolhead_count": 1,
+      "park_prep": {
+        "y": -95,
+        "x": -149
+      },
+      "filament": {
+        "unload_distance_two": 50,
+        "load_speed": 6,
+        "subtract_suspend_retract": true,
+        "unload_delay": 10,
+        "unload_distance_one": 40,
+        "load_distance": 100,
+        "unload_speed_two": 10,
+        "unload_speed_one": 95,
+        "auto_unload_distance": 80
+      },
+      "te
+      ... (truncated)
+
+  preheat:
+    {
+      "methods": [],
+      "step": "running",
+      "reason": null,
+      "cancellable": true,
+      "uuid": "f0e7391f-67eb-4609-91a1-b3f6a2f6dba8",
+      "error": null,
+      "cancelled": false,
+      "complete": false,
+      "username": null,
+      "id": 2,
+      "name": "PreheatProcess"
+    }
+
+  park:
+    {
+      "methods": [],
+      "step": "running",
+      "reason": null,
+      "cancellable": true,
+      "uuid": "a7371ef9-13b9-4c2f-9af0-728df01564e8",
+      "error": null,
+      "cancelled": false,
+      "complete": false,
+      "username": null,
+      "id": 3,
+      "name": "ParkProcess"
+    }
+
+  cancel:
+    null
+
+  get_print_history:
+    {}
+
+  get_queue_status:
+    {
+      "queue_open": false,
+      "queue": []
+    }
+
+  get_statistics:
+    {}
+
+    ⚠️  EXIST BUT RETURNED ERROR (14 methods):
+------------------------------------------------------------
+  set_config: invalid params
+  home: invalid params
+  print: invalid params
+  put_init: invalid params
+  put_raw: invalid params
+  put_term: invalid params
+  get_init: invalid params
+  capture_image: invalid params
+  load_filament: invalid params
+  unload_filament: invalid params
+  authorize: privileged information on unsecure channel
+  authenticate: invalid params
+  deauthorize: invalid params
+  process_method: invalid params

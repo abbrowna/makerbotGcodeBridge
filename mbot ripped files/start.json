@@ -1,0 +1,29 @@
+{
+    "environment": {},
+    "sequence": [
+        ["load_temperature_settings", ["$EXTRUDER_0_PREHEAT_TEMP"]],
+        ["heat"],
+        ["home_gantry"],
+        ["home_z"],
+        ["move_axis", 2, 5, 10, false],
+        ["heat"],
+        ["wait_for_file"],
+        ["load_temperature_settings", ["$EXTRUDER_0_TEMPERATURE"]],
+        ["heat"],
+        ["set_position", 3, 0],
+        ["wait_for_heaters_at_target", 5, [true]],
+        ["move", ["$X_PURGE_START",
+                  "$Y_PURGE_START",
+                  "$Z_PURGE_START",
+                  "$A_PURGE_START"],
+         200,
+         [false, false, false, false]],
+        ["move", ["$X_PURGE_END",
+                  "$Y_PURGE_END",
+                  "$Z_PURGE_END",
+                  "$A_PURGE_END"],
+         40,
+         [false, false, false, false]],
+        ["set_position", 3, 0]
+    ]
+}

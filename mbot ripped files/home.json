@@ -1,0 +1,17 @@
+{
+    "environment": {},
+    "sequence": [
+        ["load_temperature_settings", ["$EXTRUDER_0_PREHEAT_TEMP"]],
+        ["heat"],
+        ["home_gantry"],
+{   
+    "environment": {},
+    "sequence": [   
+        ["home", ["y"]],
+        ["move_axis", 1, 0, 100, false],
+        ["home", ["x"]],
+        ["move", ["$X_SAFE_ZHOME","$Y_SAFE_ZHOME",0,0], 200,
+         [false, false, true, true]
+        ]
+    ]
+}
