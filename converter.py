@@ -83,7 +83,11 @@ MAX_MESH_AGE_HOURS = 24.0  # reuse saved mesh if younger than this
 # After 10 mm inset:      X −137.5..+137.5 mm, Y −87.5..+87.5 mm
 MESH_PROBE_X = [-137.5, -91.7, -45.8, 0.0, 45.8, 91.7, 137.5]  # 7 columns, 45.8 mm spacing
 MESH_PROBE_Y = [-87.5, -43.75, 0.0, 43.75, 87.5]                # 5 rows,    43.75 mm spacing
-MESH_SEGMENT_MM = 10.0     # max segment length for mesh compensation (mm of XY travel)
+MESH_MIN_SEGMENT_MM        = 2.0    # never subdivide finer than this (mm of XY travel)
+MESH_MAX_SEGMENT_MM        = 60.0   # always break at least this often, even where the bed is flat
+MESH_CHORD_TOLERANCE_MM    = 0.015  # max allowed Z deviation between a straight chord and the
+                                     # true mesh-compensated surface before we bisect further
+MESH_MAX_SUBDIVISION_DEPTH = 8      # safety cap: min possible segment = move_length / 2**depth
 
 # Initialize last known values and variables
 last_known_values = {
@@ -285,13 +289,18 @@ def _g1_move(params: dict) -> dict:
 def parse_g1_command(line, mesh=None):
     """
     Parse a G1 line and return one move command (dict) or a list of move
-    commands when mesh compensation is active and the XY travel distance
-    exceeds MESH_SEGMENT_MM.
+    commands when mesh compensation is active and the move needs
+    subdivision to follow the bed contour.
 
     Segmentation ensures the Z offset applied at each point correctly
     reflects the mesh height at that XY location, not just the endpoint.
     Without segmentation, a 200 mm infill line would get the mesh offset
     of the final position applied for the ENTIRE line.
+
+    Segment breakpoints are chosen adaptively (see `subdivide` below):
+    flat regions of the bed get long segments, curved regions get short
+    ones, keeping the slope change at every junction small so the
+    firmware's motion planner doesn't need to decelerate through it.
     """
     global last_known_values
 
@@ -338,17 +347,18 @@ def parse_g1_command(line, mesh=None):
     dy = params['y'] - start_y
     dist_xy = math.sqrt(dx * dx + dy * dy)
 
-    if dist_xy <= MESH_SEGMENT_MM:
+    if dist_xy <= MESH_MIN_SEGMENT_MM:
         # Short move — single point compensation at destination
         params['z'] = apply_mesh_compensation(params['z'], params['x'], params['y'], mesh)
         return _g1_move(params)
 
     # ── Fade-aware segmentation guard ───────────────────────────────────────
     # If the fade factor at the current Z is so small that the maximum possible
-    # Z correction across the ENTIRE move would be less than 0.02 mm, skip
-    # segmentation entirely.  This avoids generating collinear (but separately
-    # commanded) segments above the fade height, which causes visible
-    # deceleration artefacts without providing any meaningful correction.
+    # Z correction across the ENTIRE move would be less than the chord
+    # tolerance, skip segmentation entirely.  This avoids generating collinear
+    # (but separately commanded) segments above the fade height, which causes
+    # visible deceleration artefacts without providing any meaningful
+    # correction.
     fade_height = mesh.get('fade_height', FADE_HEIGHT_MM)
     fade_at_z   = max(0.0, 1.0 - params['z'] / fade_height)
     if fade_at_z <= 0.0:
@@ -356,22 +366,60 @@ def parse_g1_command(line, mesh=None):
         return _g1_move(params)
 
     max_mesh_dev = max(abs(v) for row in mesh['offsets'] for v in row)
-    if max_mesh_dev * fade_at_z < 0.02:
+    if max_mesh_dev * fade_at_z < MESH_CHORD_TOLERANCE_MM:
         # Correction so tiny it's sub-threshold — apply at endpoint, no segments
         params['z'] = apply_mesh_compensation(params['z'], params['x'], params['y'], mesh)
         return _g1_move(params)
 
-    # ── Long move: split into ⊤10 mm segments ───────────────────────────────
-    # Each segment independently queries the mesh at its own XY midpoint
-    # so that Z follows the bed contour along the full path.
-    n_segs = math.ceil(dist_xy / MESH_SEGMENT_MM)
-    dz     = params['z'] - start_z   # commanded Z change (uncompensated)
-    da     = params['a'] - start_a
-    feed   = params['feedrate']
+    # ── Long move: subdivide adaptively based on local mesh curvature ───────
+    # Instead of a fixed segment length, walk the move and only insert a
+    # breakpoint where the mesh-compensated Z actually deviates from a
+    # straight chord by more than MESH_CHORD_TOLERANCE_MM (checked via
+    # recursive bisection, same idea as adaptive curve flattening).
+    #
+    # Flat regions of the bed collapse to one long segment (up to
+    # MESH_MAX_SEGMENT_MM). Regions where the interpolated surface bends —
+    # e.g. crossing a probe-grid cell boundary, or a local high/low spot —
+    # get subdivided further, down to MESH_MIN_SEGMENT_MM. This keeps
+    # segment-to-segment slope changes small everywhere, rather than forcing
+    # the same fixed segmentation onto flat and curved regions alike, which
+    # is what was producing junction-deviation slowdowns at essentially
+    # random points along a move.
+    dz   = params['z'] - start_z   # commanded Z change (uncompensated)
+    da   = params['a'] - start_a
+    feed = params['feedrate']
+
+    def z_at(t):
+        """Mesh-compensated Z at fraction t along this move."""
+        x = start_x + dx * t
+        y = start_y + dy * t
+        return apply_mesh_compensation(start_z + dz * t, x, y, mesh)
+
+    def subdivide(t0, t1, z0, z1, depth, out):
+        tm = (t0 + t1) / 2.0
+        z_true  = z_at(tm)
+        z_chord = (z0 + z1) / 2.0
+        seg_len = dist_xy * (t1 - t0)
+
+        needs_split = (
+            (abs(z_true - z_chord) > MESH_CHORD_TOLERANCE_MM
+             or seg_len > MESH_MAX_SEGMENT_MM)
+            and seg_len > MESH_MIN_SEGMENT_MM
+            and depth < MESH_MAX_SUBDIVISION_DEPTH
+        )
+        if needs_split:
+            subdivide(t0, tm, z0, z_true, depth + 1, out)
+            subdivide(tm, t1, z_true, z1, depth + 1, out)
+        else:
+            out.append(t1)
+
+    breakpoints = []
+    subdivide(0.0, 1.0,
+              apply_mesh_compensation(start_z, start_x, start_y, mesh),
+              z_at(1.0), 0, breakpoints)
 
     commands = []
-    for i in range(1, n_segs + 1):
-        t = i / n_segs
+    for t in breakpoints:
         seg_x = start_x + dx * t
         seg_y = start_y + dy * t
         seg_z = start_z + dz * t          # commanded Z at this fraction
@@ -2118,7 +2166,7 @@ class MakerbotPrinter:
         raise RuntimeError(
             f'Extruder did not reach {target}°C within {timeout:.0f}s')
 
-    def probe_bed_mesh(self, preheat_temp: int = 200,
+    def probe_bed_mesh(self, preheat_temp: int = 170,
                        print_temp: int = 0) -> dict:
         """
         Home the printer (XY then Z) and probe a MESH_GRID_X × MESH_GRID_Y grid
@@ -2604,7 +2652,7 @@ if __name__ == "__main__":
             if use_cached:
                 mesh = existing_mesh
             else:
-                mesh = printer.probe_bed_mesh(preheat_temp=200,
+                mesh = printer.probe_bed_mesh(preheat_temp=170,
                                               print_temp=print_temp)
                 if mesh:
                     save_mesh_to_file(printer_name, mesh)
