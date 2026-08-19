@@ -396,6 +396,11 @@ def parse_g1_command(line, mesh=None):
         return apply_mesh_compensation(start_z + dz * t, x, y, mesh)
 
     def subdivide(t0, t1, z0, z1, depth, out):
+        # Valid ONLY when [t0, t1] lies within a single bilinear cell — in that
+        # case Z(t) is at most quadratic, so a single midpoint sample is a
+        # mathematically exact test for curvature (a quadratic's maximum
+        # deviation from its chord always occurs at the midpoint). Callers
+        # must not hand this a span that crosses a grid line.
         tm = (t0 + t1) / 2.0
         z_true  = z_at(tm)
         z_chord = (z0 + z1) / 2.0
@@ -413,10 +418,46 @@ def parse_g1_command(line, mesh=None):
         else:
             out.append(t1)
 
+    def grid_crossings(probe_x, probe_y):
+        """
+        Fractions t in (0, 1) where this move crosses a probe grid line —
+        the only points where the bilinear interpolation gradient can
+        discontinuously change. These MUST be explicit breakpoints: no
+        amount of curvature sampling can substitute for them, because the
+        surface isn't even continuous in slope there.
+        """
+        ts = set()
+        if dx != 0:
+            for gx in probe_x:
+                t = (gx - start_x) / dx
+                if 0.0 < t < 1.0:
+                    ts.add(t)
+        if dy != 0:
+            for gy in probe_y:
+                t = (gy - start_y) / dy
+                if 0.0 < t < 1.0:
+                    ts.add(t)
+        # Merge near-duplicate crossings (e.g. passing near a grid corner)
+        # so we don't create degenerate near-zero-length cells.
+        merged = []
+        min_gap_t = (MESH_MIN_SEGMENT_MM / dist_xy) * 0.1
+        for t in sorted(ts):
+            if not merged or t - merged[-1] > min_gap_t:
+                merged.append(t)
+        return merged
+
+    # Cell-confined spans: [0, crossing_1, crossing_2, ..., 1]. Each span is
+    # guaranteed to lie within a single bilinear cell, so the curvature check
+    # inside subdivide() is exact rather than a spot-sample that can miss
+    # curvature between cell boundaries.
+    cell_bounds = [0.0] + grid_crossings(mesh['probe_x'], mesh['probe_y']) + [1.0]
+
     breakpoints = []
-    subdivide(0.0, 1.0,
-              apply_mesh_compensation(start_z, start_x, start_y, mesh),
-              z_at(1.0), 0, breakpoints)
+    z_prev = z_at(0.0)
+    for t0, t1 in zip(cell_bounds[:-1], cell_bounds[1:]):
+        z1 = z_at(t1)
+        subdivide(t0, t1, z_prev, z1, 0, breakpoints)
+        z_prev = z1
 
     commands = []
     for t in breakpoints:
@@ -2251,7 +2292,7 @@ class MakerbotPrinter:
 
                     # Arm HES sensor
                     self._run_machine_action("configure_hes", {
-                        "index": 0, "exponent": 0, "threshold": 4000
+                        "index": 0, "exponent": 0, "threshold": 2000
                     }, timeout=5)
 
                     # Descend until HES fires (or limit reached)
