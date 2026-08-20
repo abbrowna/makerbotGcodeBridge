@@ -68,21 +68,53 @@ WAIT_FOR_PUT_RAW_RESPONSE = True  # Set to False to send put_raw without waiting
 # =============================================================================
 # Mesh Bed Leveling Constants
 # =============================================================================
-MESH_GRID_X = 7            # probe columns (X direction)
-MESH_GRID_Y = 5            # probe rows    (Y direction)
+MESH_GRID_X = 13            # probe columns (X direction)
+MESH_GRID_Y = 9            # probe rows    (Y direction)
 FADE_HEIGHT_MM = 10.0      # compensation fades to zero at this layer height (mm)
 MESH_SAFE_Z = 5.0          # Z height for XY travel between probe points (mm above Z=0)
+MESH_REPROBE_Z = 2       # Z height before re-probe at each point (mm above Z=0)
 MESH_PROBE_SPEED = 1.0     # probe descent speed (mm/s)
 MESH_PROBE_LIMIT = -8.0    # how far below MESH_SAFE_Z to search for bed (mm)
 MESH_XY_SPEED = 100.0      # XY travel speed during probing (mm/s)
 MESH_LIFT_SPEED = 5.0      # Z lift speed after each probe (mm/s)
+PROBE_SAMPLES_PER_POINT = 1  # probes taken at each grid point; the sample farthest
+                              # from the other two is discarded and the remaining
+                              # two are averaged (rejects single-sample noise —
+                              # debris on the nozzle/bed, HES trigger jitter, etc.)
+PROBE_SPREAD_WARN_MM = 0.15  # if the full 3-sample spread at a point exceeds this,
+                              # log a warning — even after outlier rejection, a wide
+                              # spread across all 3 attempts suggests something
+                              # physical (debris, loose HES wiring) rather than
+                              # ordinary noise
+NO_TRIGGER_EPSILON_MM = 0.05      # a reading this close to the hard search limit
+                                   # means the HES never fired at all — the descent
+                                   # ran to the end of its travel, not a real contact
+EARLY_TRIGGER_DEPTH_WARN_MM = 0.15  # a reading that stopped this close to the start
+                                     # height (MESH_SAFE_Z) almost certainly isn't a
+                                     # real bed contact either — more likely the HES
+                                     # was still latched from the previous probe and
+                                     # fired the instant the descent began
 MAX_MESH_AGE_HOURS = 24.0  # reuse saved mesh if younger than this
 
-# 7 x 5 probe grid — 10 mm inset from the full build plate (295 x 195 mm)
-# Full plate centre-zero: X −147.5..+147.5 mm, Y −97.5..+97.5 mm
-# After 10 mm inset:      X −137.5..+137.5 mm, Y −87.5..+87.5 mm
-MESH_PROBE_X = [-137.5, -91.7, -45.8, 0.0, 45.8, 91.7, 137.5]  # 7 columns, 45.8 mm spacing
-MESH_PROBE_Y = [-87.5, -43.75, 0.0, 43.75, 87.5]                # 5 rows,    43.75 mm spacing
+# Probe grid — points are evenly spaced across (bed size - MESH_PROBE_MARGIN_MM)
+# on each axis, centered on the bed origin, using however many columns/rows
+# MESH_GRID_X / MESH_GRID_Y specify. Changing the grid-count constants above
+# is now sufficient on its own — these no longer need separate hand edits.
+BED_SIZE_X_MM = 295.0        # physical build plate width  (X axis, mm)
+BED_SIZE_Y_MM = 195.0        # physical build plate depth  (Y axis, mm)
+MESH_PROBE_MARGIN_MM = 10.0   # total margin subtracted from each axis' full span
+                              # (e.g. 295 x 195 bed -> 290 x 190 probed span)
+
+def _evenly_spaced_points(count: int, span: float) -> list:
+    """`count` points evenly spaced across `span`, centered on 0."""
+    if count < 2:
+        return [0.0]
+    step = span / (count - 1)
+    half = span / 2.0
+    return [round(-half + i * step, 2) for i in range(count)]
+
+MESH_PROBE_X = _evenly_spaced_points(MESH_GRID_X, BED_SIZE_X_MM - MESH_PROBE_MARGIN_MM)
+MESH_PROBE_Y = _evenly_spaced_points(MESH_GRID_Y, BED_SIZE_Y_MM - MESH_PROBE_MARGIN_MM)
 MESH_MIN_SEGMENT_MM        = 2.0    # never subdivide finer than this (mm of XY travel)
 MESH_MAX_SEGMENT_MM        = 60.0   # always break at least this often, even where the bed is flat
 MESH_CHORD_TOLERANCE_MM    = 0.015  # max allowed Z deviation between a straight chord and the
@@ -194,6 +226,39 @@ def display_mesh(mesh_data: dict) -> None:
         flush=True
     )
     print('', flush=True)
+
+
+def reject_outlier_average(values: list) -> tuple:
+    """
+    Given probe-Z samples taken at the same physical point (nominally 3),
+    discard whichever single sample is farthest — in total distance — from
+    all the others, and return the average of the rest.
+
+    This targets single-sample noise: debris on the nozzle or bed at the
+    moment of contact, HES trigger jitter, a slightly early/late fire —
+    things that produce one bad reading rather than a systematically
+    skewed pair. With exactly 3 samples this is equivalent to "drop the
+    one farthest from the median, average the remaining two."
+
+    Returns (kept_average, outlier_value_or_None, spread) where spread is
+    max(values) - min(values) of the ORIGINAL sample set (useful for
+    logging/QA — a large spread even after rejection suggests a probing
+    problem worth investigating rather than trusting blindly).
+    """
+    n = len(values)
+    if n < 3:
+        avg = sum(values) / n
+        spread = (max(values) - min(values)) if n > 1 else 0.0
+        return avg, None, spread
+
+    total_dist = [
+        sum(abs(values[i] - values[j]) for j in range(n) if j != i)
+        for i in range(n)
+    ]
+    outlier_idx = max(range(n), key=lambda i: total_dist[i])
+    kept = [values[i] for i in range(n) if i != outlier_idx]
+    spread = max(values) - min(values)
+    return sum(kept) / len(kept), values[outlier_idx], spread
 
 
 def bilinear_interpolate(mesh_offsets: list, probe_x: list, probe_y: list,
@@ -1225,21 +1290,21 @@ class MakerbotPrinter:
                     "rate_mm_per_s_sq": {
                         "x": 400,
                         "y": 400,
-                        "z": 1500
+                        "z": 100
                     },
                     "max_speed_change_mm_per_s": {
                         "x": 25,
                         "y": 25,
-                        "z": 100
+                        "z": 25
                     },
                     "impulse_speed_limit_mm_per_s": {
                         "x": 100,
                         "y": 100,
-                        "z": 100
+                        "z": 10
                     }
                 },
                 "max_speed_mm_per_second": {
-                    "z": 100
+                    "z": 30
                 }
             }
         })
@@ -2185,6 +2250,28 @@ class MakerbotPrinter:
             raise RuntimeError(f"machine_query_command({func}) error: {resp['error']}")
         return resp.get('result')
 
+    def _wait_for_hes_acknowledge(self, index: int = 0, timeout: float = 10.0) -> None:
+        """
+        Poll toolhead_acknowledged_hes until the toolhead confirms the HES at
+        `index` is armed and ready, or raise TimeoutError if it never does.
+
+        Used before the very first probe of a mesh: every later point gets an
+        incidental delay between configure_hes and find_knob_z from that
+        point's retract move, which is enough time for the sensor to settle.
+        The first point follows directly from the post-home travel move with
+        nothing in between, so it needs an explicit readiness check instead.
+        """
+        start = time.monotonic()
+        while time.monotonic() - start < timeout:
+            acknowledged = self._run_machine_query("toolhead_acknowledged_hes", {"index": index})
+            if acknowledged:
+                return
+            time.sleep(0.05)
+        raise TimeoutError(
+            f"Toolhead did not acknowledge HES index {index} within {timeout}s "
+            f"before the first probe — check the Smart Extruder+ connection"
+        )
+
     def _wait_for_temperature(self, index: int, target: int,
                               timeout: float = 300) -> None:
         """
@@ -2212,6 +2299,12 @@ class MakerbotPrinter:
         """
         Home the printer (XY then Z) and probe a MESH_GRID_X × MESH_GRID_Y grid
         using the HES probe on the Smart Extruder+.
+
+        Each grid point is probed PROBE_SAMPLES_PER_POINT times (independent
+        descents, not repeated reads of one contact event). The sample
+        farthest from the other two is discarded and the remaining two are
+        averaged — see reject_outlier_average() — to reduce the effect of a
+        single bad trigger (debris, jitter) on that point's Z value.
 
         Returns a mesh_data dict suitable for apply_mesh_compensation(), or None
         if probing fails.  The dict contains mean-centred Z offsets so only the
@@ -2290,23 +2383,103 @@ class MakerbotPrinter:
                         "relative": [False, False, False, True]
                     }, timeout=20)
 
-                    # Arm HES sensor
-                    self._run_machine_action("configure_hes", {
-                        "index": 0, "exponent": 0, "threshold": 2000
-                    }, timeout=5)
+                    # Take PROBE_SAMPLES_PER_POINT independent contact readings at
+                    # this XY location, retracting fully clear of the bed between
+                    # each so every sample is an independent descent-and-trigger,
+                    # not just a repeated read of the same contact event.
+                    samples = []
+                    for sample_i in range(PROBE_SAMPLES_PER_POINT):
+                        if sample_i > 0:
+                            # Retract clear of the bed before repeating the probe
+                            self._run_machine_action("move_axis", {
+                                "axis": 2, "point_mm": MESH_REPROBE_Z,
+                                "mm_per_second": MESH_LIFT_SPEED, "relative": False
+                            }, timeout=15)
 
-                    # Descend until HES fires (or limit reached)
-                    self._run_machine_action("find_knob_z", {
-                        "limit": MESH_PROBE_LIMIT,
-                        "speed": MESH_PROBE_SPEED
-                    }, timeout=30)
+                        # Arm HES sensor, then wait for the toolhead to confirm it
+                        # is READY (not latched from a previous contact).
+                        #
+                        # Two failure modes this prevents:
+                        #
+                        #  a) First-probe crash — Without the wait, the second
+                        #     configure_hes (called here inside the loop) fires
+                        #     find_knob_z before the HES has settled after the
+                        #     XY travel move.  No trigger arrives and the descent
+                        #     runs all the way into the bed.
+                        #
+                        #  b) Alternating +0.287 mm ghost readings — The lift from
+                        #     Z≈0 back to MESH_SAFE_Z passes through the HES spring
+                        #     hysteresis release point (~0.287 mm).  The Bronx
+                        #     toolhead latches this release event.  configure_hes
+                        #     clears the latch in hardware, but only once
+                        #     toolhead_acknowledged_hes returns True is the sensor
+                        #     guaranteed to be in a clean, un-triggered state.
+                        #     Without the wait, find_knob_z fires immediately at
+                        #     the latch position on every other probe.
+                        self._run_machine_action("configure_hes", {
+                            "index": 0, "exponent": 0, "threshold": 2000
+                        }, timeout=5)
+                        self._wait_for_hes_acknowledge(index=0, timeout=15.0)
 
-                    # Read Z at contact point
-                    pos = self._run_machine_query("get_move_buffer_position")
-                    if pos is None:
-                        raise RuntimeError(f"No position returned at probe point ({px}, {py})")
-                    z_contact = pos[2]
-                    logging.info(f"     → Z contact = {z_contact:+.3f} mm")
+                        #seems to help clear buffer or someother firmware quirk
+                        pos = self._run_machine_query("get_axes_position")
+                        status(f"pre-read {pos}")
+
+                        # Descend until HES fires (or limit reached)
+                        self._run_machine_action("find_knob_z", {
+                            "limit": MESH_PROBE_LIMIT,
+                            "speed": MESH_PROBE_SPEED
+                        }, timeout=30)
+
+                        # Read Z at contact point
+                        pos = self._run_machine_query("get_axes_position")
+                        #status(f"pre-read 2 {pos[2]:+.3f} mm")
+                        #pos = self._run_machine_query("get_move_buffer_position")
+                        if pos is None:
+                            raise RuntimeError(
+                                f"No position returned at probe point ({px}, {py}), "
+                                f"sample {sample_i + 1}/{PROBE_SAMPLES_PER_POINT}"
+                            )
+                        samples.append(pos[2])
+                        logging.info(f"     sample {sample_i + 1}/{PROBE_SAMPLES_PER_POINT}: "
+                                     f"Z = {pos[2]:+.3f} mm")
+
+                        # Live readout — printed as each probe completes, not just
+                        # in the final mesh table, so a bad point is visible the
+                        # moment it happens instead of after the whole grid finishes.
+                        depth = pos[2] - MESH_SAFE_Z   # negative = mm descended below travel height
+                        no_trigger_z = MESH_SAFE_Z + MESH_PROBE_LIMIT
+                        loc = f"[{point_num:3d}/{total_points}] ({px:+.0f},{py:+.0f})"
+                        if abs(pos[2] - no_trigger_z) < NO_TRIGGER_EPSILON_MM:
+                            status(f"{loc} sample {sample_i + 1}: Z={pos[2]:+.3f}  "
+                                   f"(descended {depth:+.3f} mm) — NEVER TRIGGERED, "
+                                   f"hit search limit", 'warn')
+                        elif abs(depth) < EARLY_TRIGGER_DEPTH_WARN_MM:
+                            status(f"{loc} sample {sample_i + 1}: Z={pos[2]:+.3f}  "
+                                   f"(descended {depth:+.3f} mm) — SUSPICIOUSLY SHALLOW, "
+                                   f"likely a false/latched trigger, not real contact", 'warn')
+                        else:
+                            status(f"{loc} sample {sample_i + 1}: Z={pos[2]:+.3f}  "
+                                   f"(descended {depth:+.3f} mm)", 'probe')
+
+                    z_contact, outlier, spread = reject_outlier_average(samples)
+                    if outlier is not None:
+                        logging.info(f"     → rejected {outlier:+.3f} mm outlier "
+                                     f"(spread {spread:.3f} mm) → Z = {z_contact:+.3f} mm")
+                        status(f"   → recorded Z = {z_contact:+.3f} mm  "
+                               f"(rejected {outlier:+.3f} outlier, spread {spread:.3f} mm)", 'data')
+                    else:
+                        logging.info(f"     → Z = {z_contact:+.3f} mm")
+                        status(f"   → recorded Z = {z_contact:+.3f} mm", 'data')
+                    if spread > PROBE_SPREAD_WARN_MM:
+                        # Spread between samples is suspiciously large relative to
+                        # the probe search range — flag it, don't silently trust it.
+                        logging.warning(f"     ⚠ large sample spread ({spread:.3f} mm) "
+                                         f"at ({px:+.0f}, {py:+.0f}) — check for debris "
+                                         f"or a loose HES connection")
+                        status(f"   ⚠ large sample spread ({spread:.3f} mm) at "
+                               f"({px:+.0f}, {py:+.0f}) — check for debris or a loose "
+                               f"HES connection", 'warn')
                     z_contacts.append(z_contact)
 
                     # Lift clear before next XY move
