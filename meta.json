@@ -10,11 +10,11 @@
    },
    "platform_temperature": 60.0,
    "build_plane_temperature": 40,
-   "commanded_duration_s": 3399,
-   "duration_s": 3399,
-   "extrusion_distance_mm": 4571.95,
+   "commanded_duration_s": 13106,
+   "duration_s": 13106,
+   "extrusion_distance_mm": 22254.1,
    "extrusion_distances_mm": [
-      4571.95
+      22254.1
    ],
    "extrusion_mass_g": 538.2573012500001,
    "extrusion_masses_g": [
@@ -25,9 +25,9 @@
    "materials": [
       "im-pla"
    ],
-   "extruder_temperature": 220,
+   "extruder_temperature": 215,
    "extruder_temperatures": [
-      220
+      215
    ],
    "model_counts": [
       {
@@ -69,6 +69,6 @@
    "makerbot_writer_version": "0.1.0",
    "pyDulcificum_version": "5.10.0",
    "commanded_durations_s": [
-      3399
+      13106
    ]
 }

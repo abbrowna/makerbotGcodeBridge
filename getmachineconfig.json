@@ -17,7 +17,7 @@
       "rate_mm_per_s_sq": {
         "y": 800,
         "x": 800,
-        "z": 150
+        "z": 80
       },
       "split_move_distance_mm": 1.375,
       "max_speed_change_mm_per_s": {

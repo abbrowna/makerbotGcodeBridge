@@ -94,7 +94,7 @@ EARLY_TRIGGER_DEPTH_WARN_MM = 0.15  # a reading that stopped this close to the s
                                      # real bed contact either — more likely the HES
                                      # was still latched from the previous probe and
                                      # fired the instant the descent began
-MAX_MESH_AGE_HOURS = 24.0  # reuse saved mesh if younger than this
+MAX_MESH_AGE_HOURS = 8760.0  # reuse saved mesh if younger than this
 
 # Probe grid — points are evenly spaced across (bed size - MESH_PROBE_MARGIN_MM)
 # on each axis, centered on the bed origin, using however many columns/rows
@@ -1300,7 +1300,7 @@ class MakerbotPrinter:
                     "impulse_speed_limit_mm_per_s": {
                         "x": 100,
                         "y": 100,
-                        "z": 10
+                        "z": 2
                     }
                 },
                 "max_speed_mm_per_second": {
