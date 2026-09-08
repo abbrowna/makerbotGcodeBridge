@@ -1290,12 +1290,12 @@ class MakerbotPrinter:
                     "rate_mm_per_s_sq": {
                         "x": 400,
                         "y": 400,
-                        "z": 100
+                        "z": 80
                     },
                     "max_speed_change_mm_per_s": {
                         "x": 25,
                         "y": 25,
-                        "z": 25
+                        "z": 10
                     },
                     "impulse_speed_limit_mm_per_s": {
                         "x": 100,

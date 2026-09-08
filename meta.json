@@ -10,11 +10,11 @@
    },
    "platform_temperature": 60.0,
    "build_plane_temperature": 40,
-   "commanded_duration_s": 13106,
-   "duration_s": 13106,
-   "extrusion_distance_mm": 22254.1,
+   "commanded_duration_s": 1881,
+   "duration_s": 1881,
+   "extrusion_distance_mm": 2380.96,
    "extrusion_distances_mm": [
-      22254.1
+      2380.96
    ],
    "extrusion_mass_g": 538.2573012500001,
    "extrusion_masses_g": [
@@ -69,6 +69,6 @@
    "makerbot_writer_version": "0.1.0",
    "pyDulcificum_version": "5.10.0",
    "commanded_durations_s": [
-      13106
+      1881
    ]
 }

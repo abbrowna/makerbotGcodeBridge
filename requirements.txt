@@ -1,0 +1,11 @@
+altgraph==0.17.5
+ifaddr==0.2.0
+macholib==1.16.4
+packaging==26.0
+pyinstaller==6.18.0
+pyinstaller-hooks-contrib==2026.0
+pync==2.0.3
+python-dateutil==2.9.0.post0
+setuptools==82.0.0
+six==1.17.0
+zeroconf==0.148.0
