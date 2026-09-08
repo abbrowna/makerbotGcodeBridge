@@ -1305,7 +1305,12 @@ class MakerbotPrinter:
                 },
                 "max_speed_mm_per_second": {
                     "z": 30
-                }
+                },
+                "build_volume": {
+                    "y": 200,
+                    "x": 300,
+                    "z": 160
+                },
             }
         })
         if 'error' in response:
