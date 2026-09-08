@@ -1300,11 +1300,11 @@ class MakerbotPrinter:
                     "impulse_speed_limit_mm_per_s": {
                         "x": 100,
                         "y": 100,
-                        "z": 2
+                        "z": 10
                     }
                 },
                 "max_speed_mm_per_second": {
-                    "z": 30
+                    "z": 10
                 },
                 "build_volume": {
                     "y": 200,
