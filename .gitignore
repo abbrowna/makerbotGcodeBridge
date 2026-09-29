@@ -3,4 +3,5 @@ _makerbot_run.sh
 _spawn.lock
 meta.json
 print.jsontoolpath
+auth_*.json
 

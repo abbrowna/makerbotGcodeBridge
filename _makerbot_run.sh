@@ -1,7 +1,7 @@
 #!/bin/bash
 PYTHON="/Users/abrown/Documents/makerbotGcodeBridge/.venv/bin/python3"
 
-"$PYTHON" "/Users/abrown/Documents/makerbotGcodeBridge/converter.py" --mesh-print "/Users/abrown/Documents/makerbotGcodeBridge/_pending_print.gcode" "/Users/abrown/Downloads/Lukas FINAL Prototypes/Jiwoo fan-version I.gcode"
+"$PYTHON" "/Users/abrown/Documents/makerbotGcodeBridge/converter.py" --mesh-print "/Users/abrown/Documents/makerbotGcodeBridge/_pending_print.gcode" "/Users/abrown/Downloads/Dongha v2.gcode"
 EXIT_CODE=$?
 echo ""
 echo "--------------------------------------------"

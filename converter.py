@@ -5,6 +5,7 @@ import os
 import sys
 import logging
 import re
+import secrets
 import socket
 import ssl
 import time
@@ -181,6 +182,43 @@ def save_mesh_to_file(printer_name: str, mesh_data: dict) -> None:
         logging.info(f"Mesh saved to {path}")
     except Exception as e:
         logging.warning(f"Could not save mesh to {path}: {e}")
+
+
+# =============================================================================
+# Local Auth Cache: avoid repeated button-press authorization
+# =============================================================================
+
+LOCAL_AUTH_USERNAME = "PrusaSlicerBridge"  # descriptive username for local (non-cloud) auth
+
+
+def _auth_file_path(printer_name: str) -> str:
+    """Return the path to the saved local-auth credentials for a given printer."""
+    safe_name = re.sub(r'[^A-Za-z0-9_\-.]', '_', printer_name)
+    return os.path.join(script_dir, f'auth_{safe_name}.json')
+
+
+def load_auth_from_file(printer_name: str) -> dict:
+    """Load saved local-auth credentials (username/local_secret/local_code), or None."""
+    path = _auth_file_path(printer_name)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        logging.warning(f"Could not load auth cache {path}: {e}")
+        return None
+
+
+def save_auth_to_file(printer_name: str, auth_data: dict) -> None:
+    """Persist local-auth credentials so future runs can skip the button press."""
+    path = _auth_file_path(printer_name)
+    try:
+        with open(path, 'w') as f:
+            json.dump(auth_data, f, indent=2)
+        logging.info(f"Local-auth credentials saved to {path}")
+    except Exception as e:
+        logging.warning(f"Could not save auth cache to {path}: {e}")
 
 
 def display_mesh(mesh_data: dict) -> None:
@@ -1185,48 +1223,98 @@ class MakerbotPrinter:
         ctx.verify_mode = ssl.CERT_NONE
         return ctx
     
-    def _fresh_authorize(self) -> str:
-        """Perform fresh TLS authorization and return token"""
-        logging.info('Starting TLS authorization...')
+    def _reauthorize(self, raw_sock: socket.socket, auth: dict) -> str:
+        """Try to silently reauthorize using previously saved local-auth credentials.
+        Returns the one_time_token on success, or '' if the credentials are no
+        longer valid (e.g. deauthorized on the printer)."""
+        request = {
+            "id": 0,
+            "jsonrpc": "2.0",
+            "method": "reauthorize",
+            "params": {
+                "username": auth["username"],
+                "local_secret": auth["local_secret"],
+                "local_code": auth["local_code"],
+            }
+        }
+        raw_sock.settimeout(10)
+        raw_sock.sendall(json.dumps(request).encode('utf-8'))
+        data = raw_sock.recv(8192)
+        response = json.loads(data.decode('utf-8'))
+        if 'error' in response:
+            logging.info(f"Saved local-auth credentials rejected: {response['error']}")
+            return ''
+        return response.get('result', {}).get('one_time_token', '')
 
-        status(f'>>> Press the button on  {self.printer_name}  to authorise <<<', 'stage')
-        status('Waiting for button press (60 s timeout)...', 'info')
+    def _fresh_authorize(self) -> str:
+        """Authorize with the printer and return a token.
+
+        If we have previously-saved local-auth credentials for this printer,
+        try a silent `reauthorize` first — this never requires a button press.
+        Only falls back to the full button-press `authorize` flow the first
+        time, or if the saved credentials have been revoked on the printer.
+        """
+        logging.info('Starting TLS authorization...')
 
         ctx = self._create_ssl_context()
         raw_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        raw_sock.settimeout(60)
-        
+        raw_sock.settimeout(10)
+
         try:
             raw_sock.connect((self.ip, self.ssl_port))
             sock = ctx.wrap_socket(raw_sock, server_hostname=self.ip)
-            
+
+            saved_auth = load_auth_from_file(self.printer_name)
+            if saved_auth:
+                status('Reauthorizing (no button press needed)…', 'info')
+                token = self._reauthorize(sock, saved_auth)
+                if token:
+                    logging.info(f'Got authorization token via reauthorize: {token}')
+                    status('Authorised', 'ok')
+                    self._auth_token = token
+                    return token
+                # Saved credentials no longer valid — fall through to full authorize
+
+            status(f'>>> Press the button on  {self.printer_name}  to authorise <<<', 'stage')
+            status('Waiting for button press (120 s timeout)...', 'info')
+            sock.settimeout(120)
+
+            local_secret = secrets.token_hex(16)
             request = {
                 "id": 0,
                 "jsonrpc": "2.0",
                 "method": "authorize",
                 "params": {
                     "makerbot_token": None,
-                    "username": "ANON",
-                    "local_secret": "undefined"
+                    "username": LOCAL_AUTH_USERNAME,
+                    "local_secret": local_secret
                 }
             }
             sock.sendall(json.dumps(request).encode('utf-8'))
-            
+
             logging.info('Waiting for printer authorization (button press required)...')
 
             data = sock.recv(8192)
             response = json.loads(data.decode('utf-8'))
 
-            token = response.get('result', {}).get('one_time_token', '')
+            result = response.get('result', {})
+            token = result.get('one_time_token', '')
+            local_code = result.get('local_code', '')
             if token:
                 logging.info(f'Got authorization token: {token}')
                 status('Authorised', 'ok')
                 self._auth_token = token
+                if local_code:
+                    save_auth_to_file(self.printer_name, {
+                        "username": LOCAL_AUTH_USERNAME,
+                        "local_secret": local_secret,
+                        "local_code": local_code,
+                    })
             else:
                 raise RuntimeError(f'No token in response: {response}')
-            
+
             return token
-            
+
         finally:
             try:
                 sock.close()
