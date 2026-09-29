@@ -1290,7 +1290,7 @@ class MakerbotPrinter:
                     "rate_mm_per_s_sq": {
                         "x": 400,
                         "y": 400,
-                        "z": 80
+                        "z": 100
                     },
                     "max_speed_change_mm_per_s": {
                         "x": 25,
@@ -1311,6 +1311,10 @@ class MakerbotPrinter:
                     "x": 300,
                     "z": 160
                 },
+                "gantry_configuration": {
+                    "travel_speed_xy": 100,
+                    "travel_speed_z": 10,
+                }
             }
         })
         if 'error' in response:

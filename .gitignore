@@ -1,3 +1,6 @@
 _pending_print.gcode
 _makerbot_run.sh
 _spawn.lock
+meta.json
+print.jsontoolpath
+
